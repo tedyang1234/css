@@ -1,11 +1,11 @@
 
 // 部署完成后在网址后面加上这个，获取订阅器默认节点，/auto
 
-let mytoken= 'auto';//快速订阅访问入口, 留空则不启动快速订阅
+let mytoken= ['auto'];//快速订阅访问入口, 留空则不启动快速订阅
 
-// 设置优选地址，不带端口号默认443，不支持非TLS订阅生成
+// 设置优选地址，不带端口号默认443，TLS订阅生成
 let addresses = [
-	'icook.tw:2053#优选域名',
+	'icook.tw:2053#官方优选域名',
 	'cloudflare.cfgo.cc#优选官方线路',
 ];
 
@@ -15,17 +15,26 @@ let addressesapi = [
 	//'https://raw.githubusercontent.com/cmliu/WorkerVless2sub/main/addressesipv6api.txt', //IPv6优选内容格式 自行搭建。
 ];
 
-let DLS = 4;//速度下限
+// 设置优选地址，不带端口号默认80，noTLS订阅生成
+let addressesnotls = [
+	'www.visa.com.sg#官方优选域名',
+	'www.wto.org:8080#官方优选域名',
+	'www.who.int:8880#官方优选域名',
+];
+
+// 设置优选noTLS地址api接口
+let addressesnotlsapi = [
+	'https://raw.githubusercontent.com/cmliu/CFcdnVmess2sub/main/addressesapi.txt', //可参考内容格式 自行搭建。
+];
+
+let DLS = 8;//速度下限
 let addressescsv = [
 	//'https://raw.githubusercontent.com/cmliu/WorkerVless2sub/main/addressescsv.csv', //iptest测速结果文件。
 ];
 
-let subconverter = "api.v1.mk"; //在线订阅转换后端，目前使用肥羊的订阅转换功能。支持自建psub 可自行搭建https://github.com/bulianglin/psub
-let subconfig = "https://raw.githubusercontent.com/cmliu/ACL4SSR/main/Clash/config/ACL4SSR_Online_Full_MultiMode.ini"; //订阅配置文件
-let addressesnotls = [];
-let addressesnotlsapi = [
-	'https://raw.githubusercontent.com/cmliu/CFcdnVmess2sub/main/addressesapi.txt',
-];
+let subconverter = "apiurl.v1.mk"; //在线订阅转换后端，目前使用肥羊的订阅转换功能。支持自建psub 可自行搭建https://github.com/bulianglin/psub
+let subconfig = "https://raw.githubusercontent.com/cmliu/ACL4SSR/main/Clash/config/ACL4SSR_Online_Full_MultiMode.ini"; //订阅转换配置文件
+let noTLS = false; //改为 true , 将不做域名判断 始终返回noTLS节点
 let link = '';
 let edgetunnel = 'ed';
 let RproxyIP = 'false';
@@ -35,7 +44,7 @@ let proxyIPs = [
 	'proxyip.vultr.fxxk.dedyn.io',
 ];
 let CMproxyIPs = [
-	{ proxyIP: "proxyip.fxxk.dedyn.io", type: "HK" },
+	//{ proxyIP: "proxyip.fxxk.dedyn.io", type: "HK" },
 ];
 let BotToken ='';
 let ChatID =''; 
@@ -175,14 +184,26 @@ async function getAddressescsv(tls) {
 	return newAddressescsv;
 }
 
+async function ADD(envadd) {
+	var addtext = envadd.replace(/[	 "'\r\n]+/g, ',').replace(/,+/g, ',');  // 将空格、双引号、单引号和换行符替换为逗号
+	//console.log(addtext);
+	if (addtext.charAt(0) == ',') addtext = addtext.slice(1);
+	if (addtext.charAt(addtext.length -1) == ',') addtext = addtext.slice(0, addtext.length - 1);
+	const add = addtext.split(',');
+	//console.log(add);
+	return add ;
+}
+
 let protocol;
 export default {
 	async fetch (request, env) {
-		mytoken = env.TOKEN || mytoken;
+		if (env.TOKEN) mytoken = await ADD(env.TOKEN);
+		//mytoken = env.TOKEN.split(',') || mytoken;
 		BotToken = env.TGTOKEN || BotToken;
 		ChatID = env.TGID || ChatID; 
 		subconverter = env.SUBAPI || subconverter;
 		subconfig = env.SUBCONFIG || subconfig;
+		FileName = env.SUBNAME || FileName;
 		const userAgentHeader = request.headers.get('User-Agent');
 		const userAgent = userAgentHeader ? userAgentHeader.toLowerCase() : "null";
 		const url = new URL(request.url);
@@ -194,12 +215,45 @@ export default {
 		total = total * 1099511627776 * 1024;
 		let expire= Math.floor(timestamp / 1000) ;
 
-		if (mytoken !== '' && url.pathname.includes(mytoken)) {
-			host = env.HOST || "edgetunnel-2z2.pages.dev";
-			uuid = env.UUID || "b7a392e2-4ef0-4496-90bc-1c37bb234904";
-			path = env.PATH || "/?ed=2048";
+		if (env.ADD) addresses = await ADD(env.ADD);
+		if (env.ADDAPI) addressesapi = await ADD(env.ADDAPI);
+		if (env.ADDNOTLS) addressesnotls = await ADD(env.ADDNOTLS);
+		if (env.ADDNOTLSAPI) addressesnotlsapi = await ADD(env.ADDNOTLSAPI);
+		if (env.ADDCSV) addressescsv = await ADD(env.ADDCSV);
+		DLS = env.DLS || DLS;
+
+		/*
+		console.log(`
+			addresses: ${addresses}
+			addressesapi: ${addressesapi}
+			addressesnotls: ${addressesnotls}
+			addressesnotlsapi: ${addressesnotlsapi}
+			addressescsv: ${addressescsv}
+			DLS: ${DLS}
+		`);
+		*/
+		
+		if (env.PROXYIP) proxyIPs = await ADD(env.PROXYIP);
+		//console.log(proxyIPs);
+
+		if (mytoken.length > 0 && mytoken.some(token => url.pathname.includes(token))) {
+			host = "null";
+			if (env.HOST) {
+				const hosts = await ADD(env.HOST);
+				host = hosts[Math.floor(Math.random() * hosts.length)];
+			}
+			uuid = env.UUID || "null";
+			path = env.PATH || "/?ed=2560";
 			edgetunnel = env.ED || edgetunnel;
 			RproxyIP = env.RPROXYIP || RproxyIP;
+
+			if (host == "null" || uuid == "null" ){
+				let 空字段;
+				if (host == "null" && uuid == "null") 空字段 = "HOST/UUID";
+				else if (host == "null") 空字段 = "HOST";
+				else if (uuid == "null") 空字段 = "UUID";
+				EndPS += ` 订阅器内置节点 ${空字段} 未设置！！！`;
+			}
 
 			const hasSos = url.searchParams.has('sos');
 			if (hasSos) {
@@ -273,13 +327,15 @@ export default {
 			}
 			
 			if (!path || path.trim() === '') {
-				path = '/?ed=2048';
+				path = '/?ed=2560';
 			} else {
 				// 如果第一个字符不是斜杠，则在前面添加一个斜杠
 				path = (path[0] === '/') ? path : '/' + path;
 			}
 		}
-
+		
+		noTLS = env.NOTLS || host.toLowerCase().includes('notls') || host.toLowerCase().includes('worker') || host.toLowerCase().includes('trycloudflare') || noTLS;
+		
 		if (userAgent.includes('telegram') || userAgent.includes('twitter') || userAgent.includes('miaoko')) {
 			return new Response('Hello World!');
 		} else if ((userAgent.includes('clash') || (format === 'clash' && !userAgent.includes('subconverter'))) && !userAgent.includes('nekobox')) {
@@ -368,7 +424,7 @@ export default {
 			const uniqueAddresses = [...new Set(addresses)];
 			
 			let notlsresponseBody;
-			if(host.includes('notls') || host.includes('trycloudflare')){
+			if(noTLS == true){
 				const newAddressesnotlsapi = await getAddressesapi(addressesnotlsapi);
 				const newAddressesnotlscsv = await getAddressescsv('FALSE');
 				addressesnotls = addressesnotls.concat(newAddressesnotlsapi);
@@ -432,7 +488,7 @@ export default {
 					}
 				}
 
-					const vlessLink = `vless://${uuid}@${address}:${port}?security=&type=ws&host=${host}&path=${encodeURIComponent(path)}#${encodeURIComponent(addressid)}`;
+					const vlessLink = `vless://${uuid}@${address}:${port}?encryption=none&security=&type=ws&host=${host}&path=${encodeURIComponent(path)}#${encodeURIComponent(addressid)}`;
 			
 					return vlessLink;
 				}).join('\n');
